@@ -2,6 +2,52 @@
 
 ---
 
+## How to Run
+
+### 1. Install dependencies
+
+```bash
+pip install tiktoken transformers datasets regex
+```
+
+### 2. Build the corpus (downloads Wikipedia via HuggingFace — no auth needed)
+
+```bash
+cd partA
+python build_corpus.py
+```
+
+This saves `corpora/eng.txt`, `corpora/hin.txt`, `corpora/kan.txt`, `corpora/tam.txt` — 1000 sentences each.
+
+### 3. Run the bug audit (proves all bugs with before/after numbers)
+
+```bash
+cd partA
+python audit_fertility.py
+```
+
+Prints a structured report of all bugs found, with measured deltas for each fix.
+
+### 4. Run the corrected analysis (GPT-2 vs MuRIL across all languages)
+
+```bash
+cd partA
+python corrected_analysis.py
+```
+
+Prints fertility tables for both tokenizers across all three denominators.
+
+### 5. Run the original buggy script (for comparison)
+
+```bash
+cd starter_kit
+python fertility.py --corpus eng=corpus_sample/eng_sample.txt \
+                    --corpus hin=corpus_sample/hin_sample.txt \
+                    --tokenizer gpt2
+```
+
+---
+
 ## Part A — Bug Audit
 
 ### Summary Table
