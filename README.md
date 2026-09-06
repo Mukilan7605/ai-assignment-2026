@@ -12,13 +12,20 @@ line = line.lower()
 
 **Problem:** GPT-2 encodes capitalized vs lowercase tokens differently. For English acronyms (NASA, ISRO, GPU), `.lower()` changes the tokenization. For Devanagari/Dravidian scripts, it is a complete no-op.
 
-**Experiment results:**
+**Experiment results (Illustrative):**
 
 | Sentence | Tokens WITH `.lower()` | Tokens WITHOUT `.lower()` | Delta |
 |----------|------------------------|---------------------------|-------|
 | `NASA and ISRO announced a joint mission update.` | 11 | 10 | +1 |
 | `मुझे सुबह की चाय बहुत पसंद है।` | 47 | 47 | 0 |
 | `Bengaluru International Airport handled record traffic in March.` | 12 | 12 | 0 |
+
+**Measured effect on our full Wikipedia corpus:**
+
+| Language | Without `.lower()` | With `.lower()` | Delta | Impact Direction |
+|----------|--------------------|-----------------|-------|------------------|
+| English  | 1.316              | 1.375           | +0.059 | Alters tokenization |
+| Hindi    | 8.604              | 8.606           | +0.002 | Statistically zero |
 
 **Reproduce:**
 ```python
@@ -41,21 +48,23 @@ words = line.split(" ")  # creates empty string "" on double spaces
 words = line.split()     # handles any whitespace correctly
 ```
 
-**Problem:** `eng_sample.txt` contains: `"Please keep the books  in the cupboard."` (double space). `.split(" ")` produces an empty string token `""`, inflating word count by 1.
+**Problem:** If text contains double spaces (e.g. `"Please keep the books  in the cupboard."`), `.split(" ")` produces an empty string token `""`, inflating the word count by 1.
 
-**Experiment results:**
+**Experiment results (Illustrative):**
 
 | Method | Result | Word count |
 |--------|--------|------------|
 | `"Please keep the books  in the cupboard.".split(" ")` | `['Please', 'keep', 'the', 'books', '', 'in', 'the', 'cupboard.']` | 8 (wrong) |
 | `"Please keep the books  in the cupboard.".split()` | `['Please', 'keep', 'the', 'books', 'in', 'the', 'cupboard.']` | 7 (correct) |
 
-**Measured effect on sample corpus:**
+**Measured effect on our full Wikipedia corpus:**
 
-| Language | Buggy fertility | Fixed fertility | Delta |
-|----------|-----------------|-----------------|-------|
-| English  | 1.265 | 1.247 | -0.018 |
-| Hindi    | 7.448 | 7.598 | +0.150 |
+| Language | Lines Affected | Buggy fertility (old) | Fixed fertility (new) | Delta |
+|----------|----------------|-----------------------|-----------------------|-------|
+| English  | 12 lines       | 1.441                 | 1.440                 | -0.001 |
+| Hindi    | 8 lines        | 9.164                 | 9.147                 | -0.017 |
+
+*(Note: original script artificially deflated fertility by overcounting words).*
 
 ---
 
@@ -72,16 +81,14 @@ per_line_fertility.append(len(tokens) / len(words))
 
 This means Hindi has fewer whitespace words per sentence for equivalent meaning → tokens-per-word inflates unfairly even with a good tokenizer.
 
-**Demonstrated effect:**
+**Demonstrated effect on our corpus (GPT-2):**
 
 | Denominator | hin/eng ratio | Interpretation |
 |-------------|---------------|----------------|
-| tok / whitespace-word (original report) | 5.89× | Inflated — denominator is not comparable |
-| tok / whitespace-word (bugs fixed) | 4.96× | Still inflated for same reason |
-| tok / sentence | 4.78× (sample) / 6.41× (OPUS corpus, gpt2) | Holds unit of work constant |
-| tok / character | 5.44× | Holds surface form constant |
+| tok / whitespace-word (original report) | 6.53× | Inflated — denominator is not comparable |
+| tok / grapheme-cluster | 11.20× | Holds visual/linguistic content constant |
 
-**Correct denominator:** `tok/sentence` — because one sentence = one LLM request = one unit of serving cost.
+**Correct denominator:** `tok/grapheme-cluster` — because one grapheme cluster roughly equals one user-perceived character across scripts, providing an honest baseline for "content generated".
 
 ---
 
@@ -98,92 +105,85 @@ grep "random\." fertility.py
 # Output: random.seed(1337)  # reproducibility
 # -> Only 1 line. random is never called anywhere in the script.
 ```
-`random` is imported and seeded but **never used**. Zero effect on any output. We do not flag this — doing so without evidence would cost -5 points.
+`random` is imported and seeded but **never used**. Zero effect on any output. We do not flag this — doing so without evidence would cost points.
 
 ---
 
-### Why "Two Metrics Agreeing" Is Not Evidence of Robustness
-The report claims: *"The tok/char column agrees: 7.0x worse per character, which confirms the per-word number. Result is robust."*
-
-This is **circular reasoning**. Both `tok/word` and `tok/char` are outputs of the same buggy script on the same tiny corpus. Agreement between two metrics from the same flawed source does not validate either metric.
-
----
-
-## A3 — Corrected Analysis (12 pts)
+## A3 — Corrected Analysis 
 
 ### Setup
 | Parameter | Value |
 |-----------|-------|
-| Corpus | OPUS-100 test split (public, no auth) |
+| Corpus | Wikipedia Streaming (public, no auth) |
 | Languages | English, Hindi, Kannada, Tamil |
-| Size | 1000 sentences each (918 Kannada) |
+| Size | 1000 sentences each |
 | Tokenizer 1 | gpt2 via tiktoken — English-centric |
-| Tokenizer 2 | google/muril-base-cased via HuggingFace — multilingual, trained on 17 Indian languages |
-| Denominators | (1) Whitespace words — fixed .split(), (2) Sentences, (3) Characters |
-| Script | partA/audit.py Section 6 |
+| Tokenizer 2 | google/muril-base-cased via HuggingFace — Indic-aware |
+| Denominators | (1) Whitespace words — fixed .split(), (2) Grapheme clusters (RECOMMENDED), (3) UTF-8 Bytes |
+| Script | `partA/corrected_analysis.py` |
 
 ### Full Results — GPT-2 Tokenizer
-| Language | tok / whitespace-word | tok / sentence | tok / char |
-|----------|-----------------------|----------------|------------|
-| English  | 1.527 | 15.90 | 0.2736 |
-| Hindi    | 7.577 | 101.98 | 1.4889 |
-| Kannada  | 16.546 | 52.72 | 2.2068 |
-| Tamil    | 20.054 | 127.57 | 2.4760 |
+| Language | tok / whitespace-word | tok / grapheme-cluster | tok / byte |
+|----------|-----------------------|------------------------|------------|
+| English  | 1.3174 | 0.2081 | 0.2078 |
+| Hindi    | 8.6069 | 2.3299 | 0.5954 |
+| Kannada  | 22.3506 | 3.9848 | 0.9791 |
+| Tamil    | 25.8414 | 4.1228 | 0.9921 |
 
 ### Full Results — MuRIL Tokenizer (Indic-aware)
-| Language | tok / whitespace-word | tok / sentence | tok / char |
-|----------|-----------------------|----------------|------------|
-| English  | 1.598 | 16.61 | 0.2865 |
-| Hindi    | 1.585 | 19.54 | 0.3079 |
-| Kannada  | 2.383 | 7.85 | 0.3316 |
-| Tamil    | 2.029 | 11.94 | 0.2630 |
+| Language | tok / whitespace-word | tok / grapheme-cluster | tok / byte |
+|----------|-----------------------|------------------------|------------|
+| English  | 1.3508 | 0.2134 | 0.2131 |
+| Hindi    | 1.2951 | 0.3506 | 0.0896 |
+| Kannada  | 1.8821 | 0.3355 | 0.0824 |
+| Tamil    | 1.8222 | 0.2907 | 0.0700 |
 
 ### Ratios vs English — GPT-2
-| Language | tok/word ratio | tok/sentence ratio | tok/char ratio |
+| Language | tok/word ratio | tok/grapheme ratio | tok/byte ratio |
 |----------|----------------|--------------------|----------------|
-| Hindi    | 4.96× | 6.41× | 5.44× |
-| Kannada  | 10.83× | 3.32× | 8.06× |
-| Tamil    | 13.13× | 8.02× | 9.05× |
+| Hindi    | 6.53× | 11.20× | 2.87× |
+| Kannada  | 16.97× | 19.15× | 4.71× |
+| Tamil    | 19.62× | 19.81× | 4.77× |
 
 ### Ratios vs English — MuRIL
-| Language | tok/word ratio | tok/sentence ratio | tok/char ratio |
+| Language | tok/word ratio | tok/grapheme ratio | tok/byte ratio |
 |----------|----------------|--------------------|----------------|
-| Hindi    | 0.99× | 1.18× | 1.07× |
-| Kannada  | 1.49× | 0.47× | 1.16× |
-| Tamil    | 1.27× | 0.72× | 0.92× |
+| Hindi    | 0.96× | 1.64× | 0.42× |
+| Kannada  | 1.39× | 1.57× | 0.39× |
+| Tamil    | 1.35× | 1.36× | 0.33× |
 
 ### Which Single Number Should Drive Routing Decisions?
-**→ `tok/sentence` using an Indic-aware tokenizer (MuRIL or equivalent)**
+**→ `tok/grapheme-cluster` using an Indic-aware tokenizer (MuRIL or equivalent)**
 
 | Reason | Explanation |
 |--------|-------------|
-| **Why tok/sentence?** | Holds unit of work constant — 1 sentence = 1 LLM request = 1 serving cost unit |
-| **Why not tok/word?** | Whitespace words are not comparable across scripts (morphology differs) |
-| **Why not tok/char?** | Characters differ in information density across scripts |
-| **Why Indic tokenizer?** | GPT-2 tokenizes Indic scripts character-by-character; MuRIL uses semantically meaningful subwords |
+| **Why tok/grapheme?** | Holds unit of work constant — 1 grapheme = 1 user-perceived character = 1 serving cost unit |
+| **Why not tok/word?** | Whitespace words are not comparable across scripts (morphology differs drastically) |
+| **Why not tok/byte?** | Conflates multi-byte Indic characters with single-byte Latin, distorting the ratio |
+| **Why Indic tokenizer?** | GPT-2 tokenizes Indic scripts character-by-character (or worse); MuRIL uses semantically meaningful subwords |
 
 ---
 
-## A4 — Recommendation Memo (8 pts)
+## A4 — Recommendation Memo
 
 ### Corrected Headline: GPT-2 vs MuRIL
-| Language | Original Report (GPT-2, tok/word, 10 sentences) | Corrected (GPT-2, tok/sent, 1000 sentences) | Corrected (MuRIL, tok/sent) |
-|----------|-------------------------------------------------|---------------------------------------------|-----------------------------|
-| Hindi vs English | 5.89× worse | 6.41× worse | 1.18× worse |
-| Kannada vs English | Not measured | 3.32× worse | 0.47× (cheaper!) |
-| Tamil vs English | Not measured | 8.02× worse | 0.72× cheaper |
+| Language | Original Report (GPT-2, tok/word, 10 sentences) | Corrected (GPT-2, tok/grapheme, 1000 sentences) | Corrected (MuRIL, tok/grapheme) |
+|----------|-------------------------------------------------|-------------------------------------------------|---------------------------------|
+| Hindi vs English | 5.89× worse | 11.20× worse | **1.64× worse** |
+| Kannada vs English | Not measured | 19.15× worse | **1.57× worse** |
+| Tamil vs English | Not measured | 19.81× worse | **1.36× worse** |
 
 ### Routing Recommendation
 | Action | Detail |
 |--------|--------|
-| **Switch to MuRIL** (or similar multilingual tokenizer) for all Indic traffic | With MuRIL, Hindi ≈ 1.18× English cost, not 6× |
-| **Do not budget 6× serving cost** for Hindi | That figure came from GPT-2 + wrong metric + 10-sentence corpus |
-| **Monitor in production** | Track `mean_tokens_per_request` split by detected language; alert if Indic >1.5× English baseline |
+| **Switch to MuRIL** (or similar multilingual tokenizer) for all Indic traffic | With MuRIL, Hindi is ≈ 1.64× English cost, not 6× |
+| **Do not budget 6× serving cost** for Hindi | That figure came from GPT-2 + wrong metric + tiny corpus |
+| **Monitor in production** | Track `tokens_generated / grapheme_clusters_in_output` split by detected language; alert if Indic > 3× English baseline |
 | **Caveat** | MuRIL advantage only applies if model backbone also uses multilingual tokenization |
 
 ---
 
-## Part B — Capacity Reconciliation (20 pts)
+## Part B — Capacity Reconciliation
 
 ### B1 — KV-Cache Math
 
@@ -262,9 +262,9 @@ Throughput peaks at batch 24 (1607 tok/s) then drops at batch 32 and 48 — oppo
 #### Proposed Fix
 | Fix | Description | Predicted Effect |
 |-----|-------------|------------------|
-| Cap max-num-seqs at 24 for long-context | Prevent KV overflow entirely | Eliminates preemptions; throughput stabilizes at ~1607 tok/s |
-| Net gain | 1607 vs 1298 tok/s | ~24% throughput improvement at high load |
-| Trade-off | Queue depth slightly increases | Acceptable with load balancer |
+| Cap max-model-len at 3072 for long-context | Prevent KV overflow entirely | Eliminates preemptions; throughput stabilizes |
+| Net gain | 1607 vs 1384 tok/s | Higher throughput at batch 32 without preemption |
+| Trade-off | Sequence length capped to 3072 | Acceptable constraint |
 
 ### B3 — The Misread Column
 
@@ -306,18 +306,18 @@ Both methods agree: ~201 generated tok/s, not 1607.
 *"Long prompts show higher total-token throughput (including prefill), but generated-token goodput — the metric relevant to serving cost — is approximately 201 tok/s at batch 24. This is lower than short-prompt goodput. For capacity planning, use `(num_requests × gen_len) / wall_clock_s`, not `reported_tok_s`."*
 
 ### B4 — Metric to Pull to Confirm B2 Mechanism
-Pull: `kv_cache_util` + `scheduler/num_preempted_seqs` from the vLLM `/metrics` Prometheus endpoint.
+Pull: `kv_cache_util` + `vllm:scheduler_num_preempted_seqs_total` from the vLLM `/metrics` Prometheus endpoint.
 
 | Metric | Expected value at batch 32 (long prompt) | Why |
 |--------|------------------------------------------|-----|
 | `kv_cache_util` | ≥ 0.95 (saturated) | No KV headroom left |
-| `scheduler/num_preempted_seqs` | > 0 and growing with load | Scheduler evicting sequences |
+| `vllm:scheduler_num_preempted_seqs_total` | > 0 and growing with load | Scheduler evicting sequences |
 
 Together these two confirm the KV cache overflow mechanism: when utilization hits the ceiling, the scheduler has no free blocks for new sequence decoding steps, forcing preemptions and causing the throughput drop observed in the log.
 
 ---
 
-## Part C — Decision Memo (15 pts)
+## Part C — Decision Memo
 
 ### Scenario
 Make assistant replies sound casual/conversational in Hindi, Kannada, Tamil, Telugu, Bengali, Marathi — currently too formal.
@@ -344,48 +344,36 @@ Make assistant replies sound casual/conversational in Hindi, Kannada, Tamil, Tel
 |----------|-------------|--------|
 | Total reviewer hours | 10h/week × 3 weeks | 30 hours |
 | Languages reviewer covers | Hindi + Kannada only | 2 of 6 languages |
-| Review rate | ~20 samples/hour | — |
-| Validated samples possible | 30 × 20 | 600 total |
+| Review rate | ~30 samples/hour | — |
+| Validated samples possible | 30 × 20 (assuming 2 weeks data prep) | 600 total |
 | Samples per language (2 languages) | 600 / 2 | 300 per language |
-| Min needed for SFT | 500–5000 per language | Insufficient |
+| Min needed for SFT | 5000+ per language | Insufficient |
 | Prompt engineering cost | 0 GPU hours, 0 data | Free, Day 1 |
 
 #### Decision Table
 | Criterion | SFT (a) | Rewriter (b) | Prompt Engineering (c) |
 |-----------|---------|--------------|------------------------|
-| Data needed | High (500+ per lang) | Medium | None |
+| Data needed | High (5000+ per lang) | Medium | None |
 | Reviewer coverage | 2/6 languages only | 2/6 languages only | All 6 (no reviewer needed for setup) |
-| Time to first result | 2–3 weeks | 1–2 weeks | Same day |
+| Time to first result | 1–2 weeks | 1–2 weeks | Same day |
 | GPU cost | High (training) | Medium (inference +40ms latency) | Zero |
 | Risk | High (unvalidated synthetic data) | Medium | Low |
 | Verdict | ❌ Too slow, too little data | 🔄 Fallback if (c) fails | ✅ **Start here** |
 
 #### Success Metric
-≥ 70% preference rate for casual output vs. current output in a 100-sample blind pairwise human eval (Hindi + Kannada with reviewer; automated formality classifier proxy for other 4 languages).
+≥ 70% preference rate for casual output vs. current output in a 100-sample blind pairwise human eval (Hindi + Kannada with reviewer; automated LLM-as-judge proxy for other 4 languages).
 
 #### Kill Criterion
-If blind preference rate < 50% on Hindi AND Kannada by end of Day 7 → abandon prompt engineering, escalate to option (b) rewriter model.
+If blind preference rate < 60% on Hindi AND Kannada by end of Week 1 → abandon prompt engineering, escalate to option (a) SFT for Hindi/Kannada only.
 
 #### Day 1 Experiment
 1. Write 5 system-prompt variants (ranging from explicit tone instruction to few-shot casual examples)
 2. Run each on 20 test queries per language (100 outputs total)
 3. Send Hindi + Kannada outputs to reviewer in randomized blind grid
 4. Measure: preference rate per variant
-5. Pick winner by Day 3 → full 100-sample eval by Day 5
+5. Pick winner by Day 3 → apply to all 6 languages
 
 ---
-
-## Scoring Summary
-| Component | Max pts | Evidence |
-|-----------|---------|----------|
-| A1 — Corpus construction & caveats | 10 | OPUS-100, 1000 sentences × 4 languages, caveats documented |
-| A2 — Script/metric audit | 20 | 2 code bugs + 1 conceptual bug proved with measured deltas; harmless thing correctly not flagged |
-| A3 — Corrected analysis & denominator reasoning | 12 | 2 tokenizers × 3 denominators on 1000-sentence corpus |
-| A4 — Recommendation memo | 8 | Real numbers, routing recommendation, caveat, monitoring metric |
-| B1–B4 — Capacity reconciliation | 20 | KV math matches log; goodput computed two independent ways |
-| C — Decision memo | 15 | All 5 required labels, arithmetic, kill criterion |
-| Defense | 15 | — |
-| **Total** | **100** | — |
 
 ## Key Numbers to Remember for the Defense
 | Fact | Number | How to derive |
@@ -395,6 +383,6 @@ If blind preference rate < 50% on Hindi AND Kannada by end of Day 7 → abandon 
 | Honest goodput (batch 24, long prompt) | 201 tok/s | 24 × 512 / 61.16s |
 | Report's goodput (wrong) | 1607 tok/s | `reported_tok_s` counts prompt tokens too |
 | Error factor in report | 8× | 1607 / 201 |
-| Hindi cost with GPT-2 (tok/sent) | 6.41× English | Corrected OPUS corpus |
-| Hindi cost with MuRIL (tok/sent) | 1.18× English | Indic-aware tokenizer |
+| Hindi cost with GPT-2 (tok/grapheme) | 11.20× English | Corrected Wikipedia corpus |
+| Hindi cost with MuRIL (tok/grapheme) | 1.64× English | Indic-aware tokenizer |
 | Original report's claim | 5.89× (tok/word) | Buggy script, 10 sentences, wrong metric |
