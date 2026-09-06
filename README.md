@@ -1,57 +1,81 @@
 # AI Assignment 2026: The Audit
 
-This repository contains the complete solution for the **AI Assignment 2026 "The Audit"** take-home assessment. It covers a full audit of an intern's faulty cross-lingual tokenizer report, mathematical reconciliation of vLLM serving capacity, and a strategic decision memo for Indic language casualization.
+This repository contains the complete solution for the AI Assignment 2026 "The Audit" take-home assessment. It covers a full audit of an intern's faulty cross-lingual tokenizer report, mathematical reconciliation of vLLM serving capacity, and a strategic decision memo for Indic language casualization.
 
-## 📁 Repository Structure
+## Repository Structure
 
 ```
 .
-├── README.md              ← You are here
-├── NOTEBOOK.md            ← Chronological lab notebook showing my thought process
-├── AI_USAGE.md            ← Honest log of how AI assistance was used and where it failed
-├── partA/                 ← Tokenizer Audit scripts & data
+├── README.md              (You are here)
+├── WALKTHROUGH.md         (Complete project walkthrough)
+├── NOTEBOOK.md            (Chronological lab notebook)
+├── AI_USAGE.md            (Log of AI assistance usage)
+├── partA/                 (Tokenizer Audit scripts & data)
 │   ├── build_corpus.py
 │   ├── audit_fertility.py
 │   ├── fertility_fixed.py
 │   ├── corrected_analysis.py
 │   ├── memo_A4.md
-│   └── corpora/           ← Generated Wikipedia samples for 4 languages
+│   └── corpora/           (Generated Wikipedia samples for 4 languages)
 ├── partB/
-│   └── analysis.md        ← KV-cache arithmetic and throughput anomaly explanation
+│   └── analysis.md        (KV-cache arithmetic and throughput anomaly explanation)
 └── partC/
-    └── memo.md            ← Strategic decision memo for the casualization rollout
+    └── memo.md            (Strategic decision memo for the casualization rollout)
 ```
 
----
+## Part A: Tokenizer Audit
+The original report claimed that Hindi text costs approximately 6x more to serve than English, concluding this was a "property of the script." This audit proves that conclusion is entirely false.
 
-## 🚀 Part A: Tokenizer Audit
-The original `REPORT_v0` claimed that Hindi text costs ~6x more to serve than English, concluding this was a "property of the script." This audit proves that conclusion **entirely false**.
+### Code Bugs Identified
+The `audit_fertility.py` script proves three implementation bugs and one critical conceptual flaw in the original script:
+1. Incorrect string splitting (`split(' ')` vs `split()`), which deflated fertility counts.
+2. Inconsistent use of `.lower()`, which alters English tokenization boundaries while acting as a no-op for Devanagari scripts.
+3. Use of micro-averaging instead of macro-averaging, heavily weighting short sentences incorrectly.
 
-*   **Bugs Identified:** `audit_fertility.py` proves three implementation bugs (whitespace splitting, inconsistent `.lower()`, micro-averaging) and one critical conceptual flaw in the original script.
-*   **The Conceptual Flaw:** The original script used `tokens per whitespace-word` to compare languages. Because Indic languages compound differently, this metric is fundamentally biased.
-*   **The Correction:** `corrected_analysis.py` uses the script-neutral **Tokens per Grapheme Cluster** metric. It tests both GPT-2 and MuRIL (Indic-aware).
-*   **Conclusion:** With an Indic-aware tokenizer, the overhead for Hindi/Dravidian languages drops from ~11x to a mere **1.36x - 1.64x**. The issue was purely a tokenizer failure. 
+### Conceptual Flaw: The Denominator
+The original script used "tokens per whitespace-word" to compare languages. Because Indic languages compound differently, this metric is fundamentally biased. The corrected analysis uses the script-neutral **Tokens per Grapheme Cluster** metric.
 
----
+### Corrected Analysis Results
+When comparing the English-centric GPT-2 tokenizer with the Indic-aware MuRIL tokenizer, the data clearly shows that high fertility is a tokenizer limitation, not a property of the script.
 
-## 🧮 Part B: Capacity Reconciliation
+**GPT-2 Tokenizer (Baseline):**
+| Language | Tokens / Grapheme Cluster | Ratio vs English |
+|----------|---------------------------|------------------|
+| English  | 0.2081                    | 1.00x            |
+| Hindi    | 2.3299                    | 11.20x           |
+| Kannada  | 3.9848                    | 19.15x           |
+| Tamil    | 4.1228                    | 19.81x           |
+
+**MuRIL Tokenizer (Indic-aware):**
+| Language | Tokens / Grapheme Cluster | Ratio vs English |
+|----------|---------------------------|------------------|
+| English  | 0.2134                    | 1.00x            |
+| Hindi    | 0.3506                    | 1.64x            |
+| Kannada  | 0.3355                    | 1.57x            |
+| Tamil    | 0.2907                    | 1.36x            |
+
+**Conclusion:** With an Indic-aware tokenizer, the overhead for Hindi and Dravidian languages drops from ~11x-20x to a mere 1.36x - 1.64x. 
+
+## Part B: Capacity Reconciliation
 The vLLM serving logs showed a counter-intuitive anomaly: throughput dropped significantly as batch size increased from 24 to 32.
 
-*   **KV-Cache Math:** `partB/analysis.md` derives the exact token capacity (~113,060 tokens) for a 24GB GPU.
-*   **The Anomaly:** At batch size 32, the sequence length demand exceeds KV-cache capacity, causing vLLM to continuously **preempt** and recompute sequences.
-*   **"Goodput":** The report's claim of 3200 tok/s at batch 48 was fundamentally misread. The actual generative "goodput" to users at the optimal batch 24 is **~201 tok/s**.
+### KV-Cache Math and The Throughput Anomaly
+The `partB/analysis.md` file derives the exact token capacity (~113,060 tokens) for the given 24GB GPU configuration. 
 
----
+At batch size 32, the sequence length demand exceeds this KV-cache capacity. This forces the vLLM scheduler to continuously preempt and recompute sequences, resulting in a throughput collapse. The proposed fix is to cap `max_model_len` at 3072, allowing batch 32 to fit in memory without preemption.
 
-## 📝 Part C: Indic Casualization Strategy
-A strategy memo outlining the path forward for casualizing assistant responses in 6 Indic languages within strict hardware and reviewer constraints.
+### The "Goodput" Calculation
+The original report's projection of 3200 tok/s at batch 48 was fundamentally miscalculated by conflating total tokens (prefill + decode) with generated output tokens. The actual generative "goodput" delivered to users at the optimal batch 24 is **~201 tok/s**.
 
-*   **The Blocker:** Option A (Supervised Fine-Tuning) requires ~5,000 reviewed pairs per language. We only have QA coverage for 2 out of 6 languages. SFT is impossible to validate for the remaining four.
-*   **The Strategy:** Option C (Prompt Engineering) is recommended for Day 1, with a strict metric: if it fails to achieve 60% reviewer preference by Week 1, we pivot to a narrow SFT approach for Hindi and Kannada only.
+## Part C: Indic Casualization Strategy
+A strategy memo (`partC/memo.md`) outlines the path forward for casualizing assistant responses in 6 Indic languages within strict hardware and reviewer constraints.
 
----
+### The Recommendation
+Supervised Fine-Tuning (SFT) is impossible to validate for 4 out of the 6 languages because of reviewer bandwidth constraints. Therefore, the recommended path is **Prompt Engineering** for Day 1.
 
-## ⚙️ How to Run the Code
+A strict kill-criterion is established: if prompt engineering fails to achieve a 60% reviewer preference by Week 1, the strategy will pivot to a narrow SFT approach restricted to Hindi and Kannada only.
+
+## How to Run the Code
 
 **1. Install dependencies:**
 ```bash
@@ -78,4 +102,4 @@ python -X utf8 corrected_analysis.py
 ```bash
 python -X utf8 fertility_fixed.py --corpus eng=corpora/eng.txt --corpus hin=corpora/hin.txt --tokenizer gpt2 --denominator grapheme
 ```
-*(Use `python -X utf8` on Windows to ensure Indic characters print correctly to the terminal).*
+*(Note: Use `python -X utf8` on Windows to ensure Indic characters print correctly to the terminal).*
