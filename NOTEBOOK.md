@@ -92,7 +92,7 @@ $ python -c "import regex; print(len(regex.findall(r'\X', 'मुझे')))"
 # Output: 4 (correct: म, ु, झ, े = 4 grapheme clusters)
 ```
 
-Key finding: the word-count denominator over-penalizes Hindi because Hindi has fewer whitespace words per unit of content. When we switch to grapheme clusters, the Hindi/English ratio drops to ~6.6× (still large, but the CAUSE is different: it's GPT-2's vocabulary being Latin-centric, not a script property).
+Key finding: the word-count denominator over-penalizes Hindi because Hindi has fewer whitespace words per unit of content. When we switch to grapheme clusters, the Hindi/English ratio becomes **11.20×** (still large, but the CAUSE is different: it is GPT-2's vocabulary being Latin-centric, not a script property).
 
 ---
 
@@ -155,7 +155,7 @@ Computed from first principles: 2 × 28 × 8 × 128 × 2 = 114,688 bytes/token =
 
 Usable KV budget: (24 × 0.92) − 8.4 − 1.6 = 12.08 GB → ~113k tokens → ~27 sequences of 4096.
 
-Cross-checked against log: batch 24 has kv_cache_util=0.93 (24 × 4096 = 98,304 / 113,060 = 0.87 — close enough given block granularity).
+Cross-checked against log: batch 24 has kv_cache_util=0.93 (24 × 4096 = 98,304 / 113,096 = 0.87 — close enough given block granularity).
 
 **B2: The throughput anomaly**
 

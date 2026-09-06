@@ -40,11 +40,27 @@ Prints fertility tables for both tokenizers across all three denominators.
 ### 5. Run the original buggy script (for comparison)
 
 ```bash
-cd starter_kit
-python fertility.py --corpus eng=corpus_sample/eng_sample.txt \
-                    --corpus hin=corpus_sample/hin_sample.txt \
-                    --tokenizer gpt2
+# From the starter_kit (1) root, not your-submission:
+python "starter_kit/fertility.py" --corpus eng=starter_kit/corpus_sample/eng_sample.txt \
+                                   --corpus hin=starter_kit/corpus_sample/hin_sample.txt \
+                                   --tokenizer gpt2
 ```
+
+### 6. Run Part B capacity analysis (no install needed)
+
+```bash
+cd partB
+python analyze_bench.py
+```
+
+### 7. Run Part C decision memo (no install needed)
+
+```bash
+cd partC
+python decision_memo.py
+```
+
+> Full written analyses are in [partB/analysis.md](partB/analysis.md) and [partC/memo.md](partC/memo.md)
 
 ---
 
