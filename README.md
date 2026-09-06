@@ -26,14 +26,36 @@ This repository contains the complete solution for the AI Assignment 2026 "The A
 ## Part A: Tokenizer Audit
 The original report claimed that Hindi text costs approximately 6x more to serve than English, concluding this was a "property of the script." This audit proves that conclusion is entirely false.
 
-### Code Bugs Identified
-The `audit_fertility.py` script proves three implementation bugs and one critical conceptual flaw in the original script:
-1. Incorrect string splitting (`split(' ')` vs `split()`), which deflated fertility counts.
-2. Inconsistent use of `.lower()`, which alters English tokenization boundaries while acting as a no-op for Devanagari scripts.
-3. Use of micro-averaging instead of macro-averaging, heavily weighting short sentences incorrectly.
+### Code Bugs Identified (With Experimental Evidence)
+The `audit_fertility.py` script proves three implementation bugs and one critical conceptual flaw in the original script. The measured effects of each bug are detailed in the tables below.
+
+#### BUG 1: Incorrect Whitespace Splitting
+The original script used `line.split(' ')` which counts double-spaces as empty words, artificially inflating the word count and deflating fertility. Fixing this to `line.split()` corrects the word count.
+| Language | Old Fertility | New Fertility | Delta |
+|----------|---------------|---------------|-------|
+| English  | 1.441         | 1.440         | -0.001 |
+| Hindi    | 9.164         | 9.147         | -0.017 |
+
+#### BUG 2: Inconsistent Lowercasing
+The original script used `.lower()` on all text. This changes token boundaries for English (e.g., 'NASA' tokenizes differently than 'nasa') but acts as a no-op for Devanagari, creating an unfair comparison.
+| Language | Without `.lower()` | With `.lower()` | Delta |
+|----------|--------------------|-----------------|-------|
+| English  | 1.316              | 1.375           | +0.059 |
+| Hindi    | 8.604              | 8.606           | +0.002 |
+
+#### BUG 3: Micro-averaging vs Macro-averaging
+The original script used micro-averaging (the mean of per-line ratios), incorrectly giving a 3-word sentence the same mathematical weight as a 30-word sentence. Macro-averaging (total tokens / total words) is the mathematically correct metric for scaling cost estimation.
+| Language | Micro Fertility | Macro Fertility | Delta |
+|----------|-----------------|-----------------|-------|
+| English  | 1.441           | 1.316           | -0.125 |
+| Hindi    | 9.164           | 8.604           | -0.560 |
 
 ### Conceptual Flaw: The Denominator
-The original script used "tokens per whitespace-word" to compare languages. Because Indic languages compound differently, this metric is fundamentally biased. The corrected analysis uses the script-neutral **Tokens per Grapheme Cluster** metric.
+The original script used "tokens per whitespace-word" to compare languages. Because Indic languages compound differently, this metric is fundamentally biased. The corrected analysis uses the script-neutral **Tokens per Grapheme Cluster** metric. The table below demonstrates how the denominator metric drastically alters the perceived ratio.
+| Metric | English Score | Hindi Score | Ratio (Hindi vs English) |
+|--------|---------------|-------------|--------------------------|
+| Tokens / Whitespace-Word (Biased) | 1.3174 | 8.6069 | 6.53x |
+| Tokens / Grapheme Cluster (Honest)| 0.2081 | 2.3299 | 11.20x |
 
 ### Corrected Analysis Results
 When comparing the English-centric GPT-2 tokenizer with the Indic-aware MuRIL tokenizer, the data clearly shows that high fertility is a tokenizer limitation, not a property of the script.
