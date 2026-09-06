@@ -56,10 +56,10 @@ KV cache budget         =  12.08 GB
 
 Max KV tokens = 12.08 GB / 112 KB
               = 12.08 × 1,073,741,824 / 114,688
-              = 12,966,029,312 / 114,688
-              ≈ 113,060 tokens
+              = 12,971,162,009.6 / 114,688
+              ≈ 113,096 tokens
 
-Max concurrent 4096-token sequences = 113,060 / 4,096 ≈ 27.6
+Max concurrent 4096-token sequences = 113,096 / 4,096 ≈ 27.6
 ```
 
 **Predicted maximum: ~27 concurrent 4096-token sequences.**
@@ -75,8 +75,8 @@ Each benchmark sequence uses prompt\_len=3584 + gen\_len=512 = **4096 tokens** (
 | 4 | 4 × 4096 = 16,384 | 0.16 | 0 | Yes — 16,384 / 113,060 = 0.14, close to 0.16 |
 | 8 | 8 × 4096 = 32,768 | 0.31 | 0 | Yes — 32,768 / 113,060 = 0.29, close to 0.31 |
 | 16 | 16 × 4096 = 65,536 | 0.62 | 0 | Yes — 65,536 / 113,060 = 0.58, close to 0.62 |
-| 24 | 24 × 4096 = 98,304 | 0.93 | 0 | Yes — 98,304 / 113,060 = 0.87, near limit |
-| 32 | 32 × 4096 = 131,072 | 0.97 | 7 | Yes — 131,072 > 113,060, overflow confirmed |
+| 24 | 24 × 4096 = 98,304 | 0.93 | 0 | Yes — 98,304 / 113,096 = 0.87, near limit |
+| 32 | 32 × 4096 = 131,072 | 0.97 | 7 | Yes — 131,072 > 113,096, overflow confirmed |
 | 48 | 48 × 4096 = 196,608 | 0.97 | 23 | Yes — severe overflow |
 
 Small discrepancies (e.g. 0.87 vs 0.93 at batch 24) are explained by paged block allocation granularity and per-sequence KV metadata overhead in vLLM. The prediction correctly identifies the overflow boundary at batch 32.
@@ -108,7 +108,7 @@ This is the opposite of what naive linear scaling predicts.
 
 ### Mechanism: KV Cache Exhaustion → Preemption → Recomputation
 
-At **batch 32**, total token demand = 32 × 4096 = **131,072 tokens**, which exceeds the KV cache capacity of **~113,060 tokens**.
+At **batch 32**, total token demand = 32 × 4096 = **131,072 tokens**, which exceeds the KV cache capacity of **~113,096 tokens**.
 
 The vLLM scheduler cannot fit all 32 sequences simultaneously. It must **preempt** (evict) some sequences from the KV cache to make room for others. The evicted sequences must later be **re-prefilled** from scratch:
 
@@ -123,10 +123,10 @@ At batch 48: 23 preemptions, wall time = 151.41s — the GPU is thrashing.
 **Set `max_model_len = 3072`** (reduce from 4096 to 3072 tokens per sequence):
 
 ```
-New KV capacity in sequences = 113,060 / 3,072 = 36.8 sequences
+New KV capacity in sequences = 113,096 / 3,072 = 36.8 sequences
 
 Batch 32 token demand = 32 × 3,072 = 98,304 tokens
-98,304 < 113,060  →  fits without preemption
+98,304 < 113,096  →  fits without preemption
 ```
 
 **Quantitative predicted effect:**
@@ -219,7 +219,7 @@ A secondary confirming metric: **`kv_cache_util`** — the fraction of KV cache 
 
 | Metric | Expected value | Why |
 |---|---|---|
-| `kv_cache_util` | ≥ 0.95 (saturated) | 32 × 4096 = 131,072 tokens exceeds 113,060 KV capacity |
+| `kv_cache_util` | ≥ 0.95 (saturated) | 32 × 4096 = 131,072 tokens exceeds 113,096 KV capacity |
 | `vllm:scheduler_num_preempted_seqs_total` | > 0 and rising with load | Scheduler has no free KV blocks for all sequences simultaneously |
 
 The log already shows this: `kv_cache_util = 0.97` and `preempted_seqs = 7` at batch 32.
