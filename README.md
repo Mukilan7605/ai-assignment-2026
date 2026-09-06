@@ -6,10 +6,10 @@
 
 | Bug / Code Pattern | Classification | Line in `fertility.py` | Measured Before & After Numbers | Distortion & Direction |
 |---|---|---|---|---|
-| `split(" ")` vs `split()` | Code Bug | L62 | • Buggy Hindi: `9.164`<br>• Fixed Hindi: `9.147`<br>• Delta: `-0.017` | Underestimates fertility by counting phantom empty strings from double spaces (`"books in"`) as words. |
-| `.lower()` Preprocessing | Code/Conceptual Bug | L60 | • Lowercased Eng: `1.375`<br>• Original Eng: `1.316`<br>• Delta: `+0.059` (Hindi Δ = `+0.002`) | Overestimates English tokens by splitting acronyms (`NASA` → 1 tok, `nasa` → 2 tok), artificially compressing the ratio. |
-| Mean-of-Ratios Aggregation | Aggregation Bug | L64 | • Micro Hin: `9.164`<br>• Macro Hin: `8.604`<br>• Delta: `-0.560` | Biases results toward short sentences by weighting a 3-word sentence equally with a 30-word sentence. |
-| `random.seed(1337)` | Harmless Code | L25 | • Measured Delta: `0.000` | Zero effect. `random` is never called; tokenization is deterministic. |
+| `split(" ")` vs `split()` | Code Bug | [L62](partA/fertility.py#L62) | • Buggy Hindi: `9.164`<br>• Fixed Hindi: `9.147`<br>• Delta: `-0.017` | Underestimates fertility by counting phantom empty strings from double spaces (`"books in"`) as words. |
+| `.lower()` Preprocessing | Code/Conceptual Bug | [L60](partA/fertility.py#L60) | • Lowercased Eng: `1.375`<br>• Original Eng: `1.316`<br>• Delta: `+0.059` (Hindi Δ = `+0.002`) | Overestimates English tokens by splitting acronyms (`NASA` → 1 tok, `nasa` → 2 tok), artificially compressing the ratio. |
+| Mean-of-Ratios Aggregation | Aggregation Bug | [L64](partA/fertility.py#L64) | • Micro Hin: `9.164`<br>• Macro Hin: `8.604`<br>• Delta: `-0.560` | Biases results toward short sentences by weighting a 3-word sentence equally with a 30-word sentence. |
+| `random.seed(1337)` | Harmless Code | [L25](partA/fertility.py#L25) | • Measured Delta: `0.000` | Zero effect. `random` is never called; tokenization is deterministic. |
 
 ---
 
